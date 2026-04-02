@@ -332,11 +332,10 @@
                   <div class="agent-label" :class="agentResp.agent_type">
                     {{ getAgentLabel(agentResp.agent_type) }}
                   </div>
-                  <div class="agent-content markdown-content" v-html="renderMarkdown(agentResp.content)"></div>
+                  <div class="agent-content markdown-body" v-html="renderMarkdown(agentResp.content)"></div>
                 </div>
               </div>
-              <div v-if="msg.role === 'assistant' && msg.generalResponse" class="general-response markdown-content" v-html="renderMarkdown(msg.generalResponse)">
-              </div>
+              <div v-if="msg.role === 'assistant' && msg.generalResponse" class="general-response markdown-body" v-html="renderMarkdown(msg.generalResponse)"></div>
               <div v-if="msg.role === 'user'" class="user-content">
                 {{ msg.content }}
               </div>
@@ -394,16 +393,23 @@ import { DownOutlined } from '@ant-design/icons-vue'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+import MarkdownIt from 'markdown-it'
 import type { TripPlan, Message as ChatMessage, DialogueResponse } from '@/types'
 import { sendChatMessage } from '@/services/api'
 
-// Markdown渲染器
-import MarkdownIt from 'markdown-it'
+// 初始化Markdown解析器
 const md = new MarkdownIt({
   html: true,
   linkify: true,
-  typographer: true
+  typographer: true,
+  breaks: true
 })
+
+// Markdown渲染辅助函数
+const renderMarkdown = (content: string) => {
+  if (!content) return ''
+  return md.render(content)
+}
 
 const router = useRouter()
 const tripPlan = ref<TripPlan | null>(null)
@@ -1081,52 +1087,55 @@ const handleChatInput = async () => {
 
   const userInput = chatInput.value.trim()
 
-  // 先保存输入，在成功时才清空
-  const originalInput = chatInput.value
+  // 先保存输入，再清空（只有成功时才真正清空）
+  chatInput.value = ''
 
-  // 添加用户消息到界面（但先不添加到真正的消息列表，等成功后再加）
-  const tempUserMessage = {
+  // 添加用户消息
+  const userMessage = {
     role: 'user',
     content: userInput,
     timestamp: new Date().toISOString()
   }
-  chatMessages.value.push(tempUserMessage)
-  chatInput.value = ''
+  chatMessages.value.push(userMessage)
 
   scrollToBottom()
   isLoading.value = true
 
   try {
-    // 准备对话历史 - 只包含真正的消息内容，不包含UI相关字段
-    const history: ChatMessage[] = chatMessages.value.map(msg => {
-      let content = ''
-      if (msg.role === 'user') {
-        content = msg.content || ''
-      } else {
-        // 对于assistant消息，构建一个简单的字符串表示
-        const parts: string[] = []
-        if (msg.agentResponses && msg.agentResponses.length > 0) {
-          msg.agentResponses.forEach((resp: any) => {
-            parts.push(`[${getAgentLabel(resp.agent_type)}]: ${resp.content}`)
-          })
+    // 准备对话历史 - 过滤掉无效的消息，只包含role和content字段
+    const history: ChatMessage[] = chatMessages.value
+      .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+      .map(msg => {
+        // 对于assistant消息，需要把复杂结构转换为简单的content字符串
+        if (msg.role === 'assistant') {
+          let content = ''
+          if (msg.agentResponses && msg.agentResponses.length > 0) {
+            content = msg.agentResponses.map((ar: any) => 
+              `${getAgentLabel(ar.agent_type)}\n${ar.content}`
+            ).join('\n\n')
+          }
+          if (msg.generalResponse) {
+            if (content) content += '\n\n'
+            content += msg.generalResponse
+          }
+          return {
+            role: msg.role,
+            content: content || '正在处理...',
+            timestamp: msg.timestamp
+          }
         }
-        if (msg.generalResponse) {
-          parts.push(msg.generalResponse)
+        return {
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp
         }
-        content = parts.join('\n\n')
-      }
-      return {
-        role: msg.role,
-        content: content,
-        timestamp: msg.timestamp
-      }
-    })
+      })
 
     // 调用API
     const response = await sendChatMessage({
       user_input: userInput,
       current_trip: tripPlan.value,
-      conversation_history: history.slice(0, -1) // 不包含刚添加的这条用户消息
+      conversation_history: history
     })
 
     // 处理响应
@@ -1134,25 +1143,17 @@ const handleChatInput = async () => {
 
   } catch (error: any) {
     console.error('对话请求失败:', error)
-    message.error('对话请求失败: ' + (error.message || '未知错误'))
     
-    // 失败时：移除刚才添加的用户消息，并恢复输入框内容
-    chatMessages.value = chatMessages.value.slice(0, -1)
-    chatInput.value = originalInput
+    // 失败时：恢复输入框内容，移除刚刚添加的用户消息
+    chatInput.value = userInput
+    chatMessages.value = chatMessages.value.filter(
+      (msg, index) => index !== chatMessages.value.length - 1
+    )
+    
+    message.error('对话请求失败: ' + (error.message || '未知错误'))
   } finally {
     isLoading.value = false
     scrollToBottom()
-  }
-}
-
-// 渲染Markdown的计算属性
-const renderMarkdown = (text: string) => {
-  if (!text) return ''
-  try {
-    return md.render(text)
-  } catch (e) {
-    console.error('Markdown渲染失败:', e)
-    return text
   }
 }
 
@@ -1163,12 +1164,6 @@ const processDialogueResponse = async (response: DialogueResponse) => {
     generalResponse: response.general_response,
     pendingTripModification: response.requires_trip_modification,
     timestamp: new Date().toISOString()
-  }
-
-  // 如果是行程修改，并且有modified_trip，但没有其他响应，我们添加一个简单的提示
-  if (response.requires_trip_modification && response.modified_trip && 
-      response.agent_responses.length === 0 && !response.general_response) {
-    assistantMessage.generalResponse = "我根据您的需求修改了行程，请查看下方的修改建议并确认是否应用。"
   }
 
   if (response.modified_trip) {
@@ -2083,97 +2078,103 @@ const cancelTripModification = (msg: any) => {
   background: #a1a1a1;
 }
 
-/* Markdown内容样式 */
-.markdown-content {
-  line-height: 1.6;
+/* Markdown样式 */
+.markdown-body {
+  line-height: 1.7;
+  font-size: 14px;
 }
 
-.markdown-content :deep(h1),
-.markdown-content :deep(h2),
-.markdown-content :deep(h3) {
-  margin-top: 12px;
-  margin-bottom: 8px;
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin-top: 16px;
+  margin-bottom: 12px;
   font-weight: 600;
+  line-height: 1.4;
 }
 
-.markdown-content :deep(h1) {
-  font-size: 1.25rem;
-  border-bottom: 1px solid #e8ecf8;
-  padding-bottom: 4px;
+.markdown-body h1 {
+  font-size: 20px;
 }
 
-.markdown-content :deep(h2) {
-  font-size: 1.125rem;
+.markdown-body h2 {
+  font-size: 18px;
 }
 
-.markdown-content :deep(h3) {
-  font-size: 1rem;
+.markdown-body h3 {
+  font-size: 16px;
 }
 
-.markdown-content :deep(p) {
-  margin: 6px 0;
+.markdown-body p {
+  margin-top: 0;
+  margin-bottom: 10px;
 }
 
-.markdown-content :deep(ul),
-.markdown-content :deep(ol) {
-  margin: 6px 0;
+.markdown-body ul,
+.markdown-body ol {
+  margin-top: 0;
+  margin-bottom: 10px;
   padding-left: 24px;
 }
 
-.markdown-content :deep(li) {
-  margin: 4px 0;
+.markdown-body li {
+  margin-bottom: 4px;
 }
 
-.markdown-content :deep(a) {
+.markdown-body code {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.markdown-body pre {
+  background-color: #f5f5f5;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 10px;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 4px solid #667eea;
+  padding-left: 12px;
+  margin: 10px 0;
+  color: #666;
+}
+
+.markdown-body a {
   color: #667eea;
   text-decoration: underline;
 }
 
-.markdown-content :deep(code) {
-  background: #f5f7fa;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9em;
+.markdown-body strong {
+  font-weight: 600;
 }
 
-.markdown-content :deep(pre) {
-  background: #2d2d2d;
-  color: #f8f8f2;
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-
-.markdown-content :deep(pre code) {
-  background: transparent;
-  padding: 0;
-  color: inherit;
-}
-
-.markdown-content :deep(blockquote) {
-  border-left: 4px solid #667eea;
-  padding-left: 12px;
-  margin: 8px 0;
-  color: #666;
-}
-
-.markdown-content :deep(table) {
-  width: 100%;
+.markdown-body table {
   border-collapse: collapse;
-  margin: 8px 0;
+  width: 100%;
+  margin-bottom: 10px;
 }
 
-.markdown-content :deep(th),
-.markdown-content :deep(td) {
+.markdown-body th,
+.markdown-body td {
   border: 1px solid #e8ecf8;
-  padding: 8px;
+  padding: 8px 12px;
   text-align: left;
 }
 
-.markdown-content :deep(th) {
-  background: #f5f7fa;
+.markdown-body th {
+  background-color: #f8f9ff;
   font-weight: 600;
 }
 </style>

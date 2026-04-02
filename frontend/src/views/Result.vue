@@ -935,11 +935,25 @@ const restoreMap = () => {
 // 初始化地图
 const initMap = async () => {
   try {
+    console.log('🔄 开始初始化地图...')
+    
+    // 检查容器是否存在
+    const container = document.getElementById('amap-container')
+    if (!container) {
+      console.error('❌ 地图容器不存在')
+      message.error('地图容器未找到')
+      return
+    }
+    
+    console.log('✅ 地图容器找到:', container)
+
     const AMap = await AMapLoader.load({
       key: import.meta.env.VITE_AMAP_WEB_JS_KEY,  // 高德地图Web端(JS API) Key
       version: '2.0',
       plugins: ['AMap.Marker', 'AMap.Polyline', 'AMap.InfoWindow']
     })
+
+    console.log('✅ 高德地图API加载成功')
 
     // 创建地图实例
     map = new AMap.Map('amap-container', {
@@ -948,20 +962,27 @@ const initMap = async () => {
       viewMode: '3D'
     })
 
+    console.log('✅ 地图实例创建成功')
+
     // 添加景点标记
     addAttractionMarkers(AMap)
 
     message.success('地图加载成功')
   } catch (error) {
-    console.error('地图加载失败:', error)
-    message.error('地图加载失败')
+    console.error('❌ 地图加载失败:', error)
+    message.error('地图加载失败: ' + (error as Error).message)
   }
 }
 
 // 添加景点标记
 const addAttractionMarkers = (AMap: any) => {
-  if (!tripPlan.value) return
+  if (!tripPlan.value) {
+    console.log('⚠️  没有行程数据，跳过添加标记')
+    return
+  }
 
+  console.log('📍 开始添加景点标记...')
+  
   const markers: any[] = []
   const allAttractions: any[] = []
 
@@ -978,6 +999,13 @@ const addAttractionMarkers = (AMap: any) => {
     })
   })
 
+  console.log(`✅ 收集到 ${allAttractions.length} 个有效景点`)
+
+  if (allAttractions.length === 0) {
+    console.log('⚠️  没有有效的景点数据')
+    return
+  }
+
   // 创建标记
   allAttractions.forEach((attraction, index) => {
     const marker = new AMap.Marker({
@@ -992,12 +1020,12 @@ const addAttractionMarkers = (AMap: any) => {
     // 创建信息窗口
     const infoWindow = new AMap.InfoWindow({
       content: `
-        <div style="padding: 10px;">
-          <h4 style="margin: 0 0 8px 0;">${attraction.name}</h4>
-          <p style="margin: 4px 0;"><strong>地址:</strong> ${attraction.address}</p>
-          <p style="margin: 4px 0;"><strong>游览时长:</strong> ${attraction.visit_duration}分钟</p>
-          <p style="margin: 4px 0;"><strong>描述:</strong> ${attraction.description}</p>
-          <p style="margin: 4px 0; color: #1890ff;"><strong>第${attraction.dayIndex + 1}天 景点${attraction.attrIndex + 1}</strong></p>
+        <div style="padding: 10px; min-width: 200px;">
+          <h4 style="margin: 0 0 8px 0; color: #1890ff;">${attraction.name}</h4>
+          <p style="margin: 4px 0;"><strong>地址:</strong> ${attraction.address || '暂无'}</p>
+          <p style="margin: 4px 0;"><strong>游览时长:</strong> ${attraction.visit_duration || '待定'}分钟</p>
+          <p style="margin: 4px 0;"><strong>描述:</strong> ${attraction.description || '暂无描述'}</p>
+          <p style="margin: 4px 0; color: #667eea;"><strong>第${attraction.dayIndex + 1}天 景点${attraction.attrIndex + 1}</strong></p>
         </div>
       `,
       offset: new AMap.Pixel(0, -30)
@@ -1012,11 +1040,15 @@ const addAttractionMarkers = (AMap: any) => {
   })
 
   // 添加标记到地图
-  map.add(markers)
+  if (markers.length > 0) {
+    map.add(markers)
+    console.log(`✅ 已添加 ${markers.length} 个标记`)
+  }
 
   // 自动调整视野以包含所有标记
   if (allAttractions.length > 0) {
     map.setFitView(markers)
+    console.log('✅ 地图视野已自动调整')
   }
 
   // 绘制路线
@@ -1025,7 +1057,17 @@ const addAttractionMarkers = (AMap: any) => {
 
 // 绘制路线
 const drawRoutes = (AMap: any, attractions: any[]) => {
-  if (attractions.length < 2) return
+  if (!map) {
+    console.log('⚠️  地图实例不存在，跳过绘制路线')
+    return
+  }
+  
+  if (attractions.length < 2) {
+    console.log('⚠️  景点数量不足，跳过绘制路线')
+    return
+  }
+
+  console.log('🛤️  开始绘制路线...')
 
   // 按天分组绘制路线
   const dayGroups: any = {}
@@ -1036,6 +1078,7 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
     dayGroups[attr.dayIndex].push(attr)
   })
 
+  let routeCount = 0
   // 为每天的景点绘制路线
   Object.values(dayGroups).forEach((dayAttractions: any) => {
     if (dayAttractions.length < 2) return
@@ -1055,7 +1098,10 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
     })
 
     map.add(polyline)
+    routeCount++
   })
+
+  console.log(`✅ 已绘制 ${routeCount} 条路线`)
 }
 
 // ============ 对话相关函数 ============
@@ -1599,6 +1645,13 @@ const cancelTripModification = (msg: any) => {
 .map-card :deep(.ant-card-body) {
   height: calc(100% - 64px);
   padding: 0;
+  min-height: 456px;
+}
+
+#amap-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 456px !important;
 }
 
 /* 每日行程卡片 */

@@ -272,6 +272,18 @@ class DialogueAgentSystem:
                     "\n".join(additional_agent_results)
                 )
                 response.modified_trip = modified_trip
+                
+                # 添加行程修改的AgentResponse
+                modify_summary = self._generate_modify_summary(
+                    modify_info,
+                    request.current_trip,
+                    modified_trip
+                )
+                response.agent_responses.append(AgentResponse(
+                    agent_type="modify_trip",
+                    content=modify_summary,
+                    success=True
+                ))
             
             print(f"\n{'='*60}")
             print(f"✅ 对话处理完成")
@@ -470,6 +482,46 @@ class DialogueAgentSystem:
             import traceback
             traceback.print_exc()
             return current_trip
+    
+    def _generate_modify_summary(
+        self,
+        info: Dict[str, Any],
+        original_trip: TripPlan,
+        modified_trip: TripPlan
+    ) -> str:
+        """
+        生成行程修改的摘要说明
+        
+        Args:
+            info: 修改信息
+            original_trip: 原行程
+            modified_trip: 修改后的行程
+            
+        Returns:
+            修改摘要文本
+        """
+        requirements = info.get("requirements", "")
+        
+        summary = f"""## 行程修改建议
+
+根据您的需求：**{requirements}**，我为您重新规划了行程。
+
+### 修改要点：
+- 目的地：{modified_trip.city}
+- 日期：{modified_trip.start_date} 至 {modified_trip.end_date}
+- 天数：{len(modified_trip.days)}天
+
+### 每日行程概览：
+"""
+        for day in modified_trip.days:
+            summary += f"\n**第{day.day_index + 1}天 ({day.date})**\n"
+            summary += f"- {day.description}\n"
+            summary += f"- 景点：{', '.join([a.name for a in day.attractions])}\n"
+        
+        summary += f"\n### 总体建议：\n{modified_trip.overall_suggestions}\n"
+        summary += "\n---\n\n**请确认是否应用此修改？**"
+        
+        return summary
     
     def _format_trip_info(self, trip: TripPlan) -> str:
         """格式化行程信息为文本"""

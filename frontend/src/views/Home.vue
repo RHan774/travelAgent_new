@@ -298,7 +298,7 @@ const handleSubmit = async () => {
       // 短暂延迟后跳转
       setTimeout(() => {
         router.push('/result')
-      }, 500)
+      }, 600)
     } else {
       message.error(response.message || '生成失败')
     }
@@ -310,7 +310,7 @@ const handleSubmit = async () => {
       loading.value = false
       loadingProgress.value = 0
       loadingStatus.value = ''
-    }, 1000)
+    }, 1200)
   }
 }
 </script>

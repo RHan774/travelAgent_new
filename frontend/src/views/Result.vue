@@ -1087,9 +1087,6 @@ const handleChatInput = async () => {
 
   const userInput = chatInput.value.trim()
 
-  // 先保存输入，再清空（只有成功时才真正清空）
-  chatInput.value = ''
-
   // 添加用户消息
   const userMessage = {
     role: 'user',
@@ -1140,6 +1137,9 @@ const handleChatInput = async () => {
 
     // 处理响应
     await processDialogueResponse(response)
+
+    // 成功时：清空输入框
+    chatInput.value = ''
 
   } catch (error: any) {
     console.error('对话请求失败:', error)

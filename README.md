@@ -7,6 +7,7 @@
 - 🤖 **AI驱动的旅行规划**: 基于HelloAgents框架的SimpleAgent,智能生成详细的多日旅程
 - 🗺️ **高德地图集成**: 通过MCP协议接入高德地图服务,支持景点搜索、路线规划、天气查询
 - 🧠 **智能工具调用**: Agent自动调用高德地图MCP工具,获取实时POI、路线和天气信息
+- 💬 **集成式对话Agent**: 支持多轮对话、意图识别、智能路由,可与旅行助手实时交互
 - 🎨 **现代化前端**: Vue3 + TypeScript + Vite,响应式设计,流畅的用户体验
 - 📱 **完整功能**: 包含住宿、交通、餐饮和景点游览时间推荐
 
@@ -32,12 +33,14 @@ helloagents-trip-planner/
 ├── backend/                    # 后端服务
 │   ├── app/
 │   │   ├── agents/            # Agent实现
-│   │   │   └── trip_planner_agent.py
+│   │   │   ├── trip_planner_agent.py
+│   │   │   └── dialogue_agent.py       # 对话Agent系统
 │   │   ├── api/               # FastAPI路由
 │   │   │   ├── main.py
 │   │   │   └── routes/
 │   │   │       ├── trip.py
-│   │   │       └── map.py
+│   │   │       ├── map.py
+│   │   │       └── chat.py             # 对话路由
 │   │   ├── services/          # 服务层
 │   │   │   ├── amap_service.py
 │   │   │   └── llm_service.py
@@ -123,6 +126,8 @@ npm run dev
 
 ## 📝 使用指南
 
+### 生成旅行计划
+
 1. 在首页填写旅行信息:
    - 目的地城市
    - 旅行日期和天数
@@ -144,6 +149,28 @@ npm run dev
    - 交通路线规划
    - 天气预报
    - 餐饮推荐
+
+### 智能对话功能
+
+在行程结果页面，您可以使用右侧的智能对话助手进行交互：
+
+1. **查看对话面板** - 页面右下角显示智能对话助手
+2. **多种意图识别** - 支持以下意图类型：
+   - 📍 **景点搜索** - 搜索特定景点信息
+   - 🌤️ **天气查询** - 查询特定城市或日期的天气
+   - 🏨 **酒店推荐** - 获取酒店推荐信息
+   - 📋 **更改行程** - 修改当前旅行计划
+   - 💬 **普通对话** - 其他相关问题
+
+3. **多意图识别** - 支持在一轮对话中同时识别多种意图
+   - 例如："查一下明天的天气，再推荐几个酒店"
+
+4. **行程修改流程**：
+   - 当您提出行程修改需求时，系统会生成新的行程方案
+   - 您可以查看修改建议并选择"应用修改"或"取消"
+   - 应用修改后，左侧行程区域会自动更新
+
+5. **Markdown支持** - 对话内容支持Markdown格式渲染，美观易读
 
 ## 🔧 核心实现
 
@@ -185,28 +212,18 @@ Agent可以自动调用以下高德地图MCP工具:
 
 启动后端服务后,访问 `http://localhost:8000/docs` 查看完整的API文档。
 
-主要端点:
+### 主要端点
+
+#### 行程规划
 - `POST /api/trip/plan` - 生成旅行计划
+
+#### 地图服务
 - `GET /api/map/poi` - 搜索POI
 - `GET /api/map/weather` - 查询天气
 - `POST /api/map/route` - 规划路线
 
-## 🤝 贡献指南
-
-欢迎提交Pull Request或Issue!
-
-## 📜 开源协议
-
-CC BY-NC-SA 4.0
-
-## 🙏 致谢
-
-- [HelloAgents](https://github.com/datawhalechina/Hello-Agents) - 智能体教程
-- [HelloAgents框架](https://github.com/jjyaoao/HelloAgents) - 智能体框架
-- [高德地图开放平台](https://lbs.amap.com/) - 地图服务
-- [amap-mcp-server](https://github.com/sugarforever/amap-mcp-server) - 高德地图MCP服务器
-
----
-
-**HelloAgents智能旅行助手** - 让旅行计划变得简单而智能 🌈
-
+#### 对话服务
+- `POST /api/chat/message` - 发送对话消息
+  - 请求：包含用户输入、当前行程、对话历史
+  - 响应：包含识别的意图、各Agent响应、修改后的行程等
+- `GET /api/chat/health` - 对话服务健康检查
